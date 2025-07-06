@@ -6,6 +6,23 @@ import httpClient from './http';
 import { markdownToBlocks } from '@tryfabric/martian';
 import { AxiosResponse, isAxiosError } from 'axios';
 
+async function validateSubscription(): Promise<void> {
+  const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`
+
+  try {
+    await httpClient.get(API_URL, { timeout: 3000 })
+  } catch (error) {
+    if (isAxiosError(error) && error.response) {
+      core.error(
+        'Subscription is not valid. Reach out to support@stepsecurity.io'
+      )
+      process.exit(1)
+    } else {
+      core.info('Timeout or API not reachable. Continuing to next step.')
+    }
+  }
+}
+
 function getHeaders(notionToken:string){
   return {
     Authorization: `Bearer ${notionToken}`,
@@ -137,6 +154,7 @@ async function pushMdFilesToNotion(notionToken : string) {
 
 async function run() {
   try {
+    await validateSubscription()
     const notionToken = core.getInput('notion-token', { required: true });
     await pushMdFilesToNotion(notionToken);
     core.info(`✅ Pushed all markdown files to notion`);

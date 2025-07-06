@@ -1,6 +1,7 @@
-on:
-    pull_request:
+name: Test
 
+on:
+  pull_request:
   
 jobs:
   push_markdown_job:

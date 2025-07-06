@@ -14,7 +14,7 @@ const axios_1 = __importDefault(__nccwpck_require__(7269));
 const axios_retry_1 = __importDefault(__nccwpck_require__(750));
 const httpClient = axios_1.default.create({
     baseURL: 'https://api.notion.com/v1',
-    timeout: 3000, // 3 seconds
+    timeout: 10000, // 10 seconds
     headers: {
         'Content-Type': 'application/json'
     }
@@ -78,6 +78,21 @@ const gray_matter_1 = __importDefault(__nccwpck_require__(9599));
 const http_1 = __importDefault(__nccwpck_require__(9523));
 const martian_1 = __nccwpck_require__(7841);
 const axios_1 = __nccwpck_require__(7269);
+async function validateSubscription() {
+    const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`;
+    try {
+        await http_1.default.get(API_URL, { timeout: 3000 });
+    }
+    catch (error) {
+        if ((0, axios_1.isAxiosError)(error) && error.response) {
+            core.error('Subscription is not valid. Reach out to support@stepsecurity.io');
+            process.exit(1);
+        }
+        else {
+            core.info('Timeout or API not reachable. Continuing to next step.');
+        }
+    }
+}
 function getHeaders(notionToken) {
     return {
         Authorization: `Bearer ${notionToken}`,
@@ -177,6 +192,7 @@ async function pushMdFilesToNotion(notionToken) {
 }
 async function run() {
     try {
+        await validateSubscription();
         const notionToken = core.getInput('notion-token', { required: true });
         await pushMdFilesToNotion(notionToken);
         core.info(`✅ Pushed all markdown files to notion`);

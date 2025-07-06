@@ -3,7 +3,7 @@ import axiosRetry from 'axios-retry';
 
 const httpClient = axios.create({
   baseURL: 'https://api.notion.com/v1',
-  timeout: 3000, // 3 seconds
+  timeout: 10000, // 10 seconds
   headers: {
     'Content-Type': 'application/json'
   }
