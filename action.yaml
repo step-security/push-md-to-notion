@@ -5,6 +5,9 @@ inputs:
   notion-token:
     description: 'Notion integration token for authorization'
     required: true
+  github-token:
+    description: 'GitHub token for making API calls'
+    required: true
 branding:
   color: yellow
   icon: pencil

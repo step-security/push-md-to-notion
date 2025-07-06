@@ -85,7 +85,7 @@ function getHeaders(notionToken) {
     };
 }
 async function getChangedMarkdownFiles() {
-    const github_token = core.getInput('github-token') || process.env.GITHUB_TOKEN || '';
+    const github_token = core.getInput('github-token', { required: true });
     const octokit = github.getOctokit(github_token);
     const context = github.context;
     const sha = context.sha;

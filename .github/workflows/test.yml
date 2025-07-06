@@ -16,3 +16,4 @@ jobs:
       id: push_markdown
       with:
         notion-token: ${{ secrets.NOTION_TOKEN }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
