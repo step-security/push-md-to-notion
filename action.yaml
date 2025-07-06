@@ -1,0 +1,13 @@
+name: push-md-to-notion
+description: GIthub action for pushing markdown changes to Notion
+author: step-security
+inputs:
+  notion-token:
+    description: 'Notion integration token for authorization'
+    required: true
+branding:
+  color: yellow
+  icon: pencil
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
