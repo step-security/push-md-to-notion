@@ -170,6 +170,7 @@ async function pushMdFilesToNotion(notionToken) {
                 }, {
                     headers: getHeaders(notionToken),
                 });
+                core.info(`✅ Pushed file ${f} to notion`);
             }
         }
     }
@@ -178,6 +179,7 @@ async function run() {
     try {
         const notionToken = core.getInput('notion-token', { required: true });
         await pushMdFilesToNotion(notionToken);
+        core.info(`✅ Pushed all markdown files to notion`);
     }
     catch (e) {
         if ((0, axios_1.isAxiosError)(e)) {
