@@ -148,6 +148,13 @@ async function updateNotionPageTitle(pageId, newTitle, notionToken) {
     });
     core.info(`✅ Updated title to "${newTitle}" for page ${pageId}`);
 }
+function chunkBlocks(blocks, size = 100) {
+    const chunks = [];
+    for (let i = 0; i < blocks.length; i += size) {
+        chunks.push(blocks.slice(i, i + size));
+    }
+    return chunks;
+}
 async function pushMdFilesToNotion(notionToken) {
     const markdownFiles = await getChangedMarkdownFiles();
     core.debug(markdownFiles.join('\n'));
@@ -178,13 +185,16 @@ async function pushMdFilesToNotion(notionToken) {
                 }
                 //convert the markdown to content to notion blocks
                 const blocks = (0, martian_1.markdownToBlocks)(parsed_content.content);
+                const blockChunks = chunkBlocks(blocks, 100);
                 //append these new blocks to the empty page
                 core.info("Uploading blocks to notion page");
-                await http_1.default.patch(`/blocks/${parentBlockId}/children`, {
-                    children: blocks
-                }, {
-                    headers: getHeaders(notionToken),
-                });
+                for (const chunk of blockChunks) {
+                    await http_1.default.patch(`/blocks/${parentBlockId}/children`, {
+                        children: chunk
+                    }, {
+                        headers: getHeaders(notionToken),
+                    });
+                }
                 core.info(`✅ Pushed file ${f} to notion`);
             }
         }
