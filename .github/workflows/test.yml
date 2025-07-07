@@ -13,8 +13,8 @@ jobs:
       with:
         fetch-depth: 2
     - name: Push markdown
-      uses: ./
+      uses: JoshStern/push-md-to-notion@v0.3.0
       id: push_markdown
       with:
         notion-token: ${{ secrets.NOTION_TOKEN }}
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        # github-token: ${{ secrets.GITHUB_TOKEN }}
