@@ -16,8 +16,8 @@ const httpClient = axios_1.default.create({
     baseURL: 'https://api.notion.com/v1',
     timeout: 10000, // 10 seconds
     headers: {
-        'Content-Type': 'application/json'
-    }
+        'Content-Type': 'application/json',
+    },
 });
 // Add retry logic
 (0, axios_retry_1.default)(httpClient, {
@@ -96,7 +96,7 @@ async function validateSubscription() {
 function getHeaders(notionToken) {
     return {
         Authorization: `Bearer ${notionToken}`,
-        'Notion-Version': '2022-06-28'
+        'Notion-Version': '2022-06-28',
     };
 }
 function getEditedMarkdownFiles() {
@@ -116,10 +116,10 @@ async function getAllChildrenBlocks(blockId, token) {
     while (hasMore) {
         const response = await http_1.default.get('/blocks/' + blockId + '/children', {
             headers: getHeaders(token),
-            params: startCursor ? { start_cursor: startCursor } : {}
+            params: startCursor ? { start_cursor: startCursor } : {},
         });
         const data = response.data;
-        allBlocks.push(...((data.results).map((block) => block.id)));
+        allBlocks.push(...data.results.map((block) => block.id));
         hasMore = data.has_more;
         startCursor = data.next_cursor;
     }
@@ -133,12 +133,12 @@ async function updateNotionPageTitle(pageId, newTitle, notionToken) {
                     {
                         type: 'text',
                         text: {
-                            content: newTitle
-                        }
-                    }
-                ]
-            }
-        }
+                            content: newTitle,
+                        },
+                    },
+                ],
+            },
+        },
     }, {
         headers: getHeaders(notionToken),
     });
@@ -154,7 +154,7 @@ function chunkBlocks(blocks, size = 100) {
 async function pushMdFilesToNotion(notionToken) {
     const markdownFiles = await getEditedMarkdownFiles();
     if (markdownFiles.length === 0) {
-        core.info("No markdown files with changes detected for current commit");
+        core.info('No markdown files with changes detected for current commit');
         return;
     }
     core.debug(markdownFiles.join('\n'));
@@ -173,11 +173,11 @@ async function pushMdFilesToNotion(notionToken) {
             else {
                 //update the title of the page if present
                 if (parsed_content.data.title) {
-                    core.info("Updating page title");
+                    core.info('Updating page title');
                     await updateNotionPageTitle(parentBlockId, parsed_content.data.title, notionToken);
                 }
                 // Get all children blocks for current page and delete them
-                core.info("Fetching current page from notion as blocks");
+                core.info('Fetching current page from notion as blocks');
                 const childrenBlockIds = await getAllChildrenBlocks(parentBlockId, notionToken);
                 for (let blockId of childrenBlockIds) {
                     await http_1.default.delete(`/blocks/${blockId}`, {
@@ -187,12 +187,12 @@ async function pushMdFilesToNotion(notionToken) {
                 //convert the markdown to content to notion blocks
                 const blocks = (0, martian_1.markdownToBlocks)(parsed_content.content);
                 //append these new blocks to the empty page
-                core.info("Uploading blocks to notion page");
+                core.info('Uploading blocks to notion page');
                 //seperate blocks into chunks of 100 to not cross API limits.
                 const blockChunks = chunkBlocks(blocks, 100);
                 for (const chunk of blockChunks) {
                     await http_1.default.patch(`/blocks/${parentBlockId}/children`, {
-                        children: chunk
+                        children: chunk,
                     }, {
                         headers: getHeaders(notionToken),
                     });
@@ -224,7 +224,7 @@ async function run() {
                 `Status: ${status}`,
                 `Message: ${message}`,
                 `Response: ${responseData}`,
-                `Stack: ${e.stack || 'No stack trace'}`
+                `Stack: ${e.stack || 'No stack trace'}`,
             ].join('\n'));
         }
         else {
