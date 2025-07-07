@@ -107,6 +107,10 @@ function chunkBlocks<T>(blocks: T[], size = 100): T[][] {
 
 async function pushMdFilesToNotion(notionToken : string) {
   const markdownFiles = await getChangedMarkdownFiles();
+  if (markdownFiles.length === 0) {
+    core.info("No markdown files changed — skipping Notion sync.");
+    return;
+  }
   core.debug(markdownFiles.join('\n'))
   // loop over all the markdown files and push the corresponding ones to notion
   for(let f of markdownFiles){
