@@ -1,12 +1,9 @@
-name: push-md-to-notion
-description: GIthub action for pushing markdown changes to Notion
+name: Sync markdown files to notion
+description: Github action for pushing markdown changes to Notion
 author: step-security
 inputs:
   notion-token:
     description: 'Notion integration token for authorization'
-    required: true
-  github-token:
-    description: 'GitHub token for making API calls'
     required: true
 branding:
   color: yellow

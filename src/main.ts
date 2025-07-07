@@ -1,10 +1,10 @@
-import * as github from '@actions/github';
 import * as core from '@actions/core';
 import fs from 'fs';
 import matter from 'gray-matter';
 import httpClient from './http';
 import { markdownToBlocks } from '@tryfabric/martian';
 import { AxiosResponse, isAxiosError } from 'axios';
+import * as cp from 'child_process';
 
 async function validateSubscription(): Promise<void> {
   const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`
@@ -30,22 +30,17 @@ function getHeaders(notionToken:string){
   };
 }
 
-async function getChangedMarkdownFiles(): Promise<string[]> {
-  const github_token = core.getInput('github-token',{ required: true });
-  const octokit = github.getOctokit(github_token);
-  const context = github.context;
-
-  const sha = context.sha;
-
-  const { data } = await octokit.rest.repos.getCommit({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    ref: sha
+function getEditedMarkdownFiles(): string[] {
+  const allChangedFiles = cp.execSync('git show --name-only --pretty=format:', {
+    encoding: 'utf-8',
   });
 
-  return data.files
-    ?.filter(file => file.filename.endsWith('.md') && file.status !== 'removed')
-    .map(file => file.filename) ?? [];
+  const changedMarkdownFiles = allChangedFiles
+  .trim()
+  .split('\n')
+  .filter((fn) => fn.endsWith('.md'));
+
+  return changedMarkdownFiles
 }
 
 async function getAllChildrenBlocks(
@@ -97,8 +92,20 @@ async function updateNotionPageTitle(
   core.info(`✅ Updated title to "${newTitle}" for page ${pageId}`);
 }
 
+function chunkBlocks<T>(blocks: T[], size = 100): T[][] {
+  const chunks = [];
+  for (let i = 0; i < blocks.length; i += size) {
+    chunks.push(blocks.slice(i, i + size));
+  }
+  return chunks;
+}
+
 async function pushMdFilesToNotion(notionToken : string) {
-  const markdownFiles = await getChangedMarkdownFiles();
+  const markdownFiles = await getEditedMarkdownFiles();
+  if(markdownFiles.length === 0){
+    core.info("No markdown files with changes detected for current commit")
+    return
+  }
   core.debug(markdownFiles.join('\n'))
   // loop over all the markdown files and push the corresponding ones to notion
   for(let f of markdownFiles){
@@ -111,6 +118,7 @@ async function pushMdFilesToNotion(notionToken : string) {
         typeof parsed_content.data.title === 'undefined'
       )
     ){
+      core.info(`notion frontmatter found for ${f}`)
       const parentBlockId = parsed_content.data.notion_page.split('-').pop()
       if (!parentBlockId) {
         core.info(`Could not extract block ID from ${parsed_content.data.notion_page}. Skipping this file: ${f}`);
@@ -141,13 +149,20 @@ async function pushMdFilesToNotion(notionToken : string) {
 
         //append these new blocks to the empty page
         core.info("Uploading blocks to notion page")
-        await httpClient.patch(`/blocks/${parentBlockId}/children`, {
-          children: blocks
-        }, {
-          headers: getHeaders(notionToken),
-        });
+        //seperate blocks into chunks of 100 to not cross API limits.
+        const blockChunks = chunkBlocks(blocks, 100);
+        for(const chunk of blockChunks){
+          await httpClient.patch(`/blocks/${parentBlockId}/children`, {
+            children: chunk
+          }, {
+            headers: getHeaders(notionToken),
+          });
+        }
         core.info(`✅ Pushed file ${f} to notion`);
       }
+    }
+    else{
+      core.info(`no notion frontmatter found for ${f}`)
     }
   }    
 }

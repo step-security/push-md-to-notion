@@ -1,7 +1,9 @@
 name: Test
 
 on:
-  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main, release]
   
 jobs:
   push_markdown_job:
@@ -17,4 +19,3 @@ jobs:
       id: push_markdown
       with:
         notion-token: ${{ secrets.NOTION_TOKEN }}
-        github-token: ${{ secrets.GITHUB_TOKEN }}

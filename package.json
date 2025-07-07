@@ -24,7 +24,6 @@
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "@actions/github": "^6.0.1",
     "@tryfabric/martian": "^1.2.0",
     "axios": "^1.10.0",
     "axios-retry": "^4.5.0",
