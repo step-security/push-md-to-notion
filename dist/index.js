@@ -109,6 +109,9 @@ async function getChangedMarkdownFiles() {
         repo: context.repo.repo,
         ref: sha
     });
+    console.log('SHA:', sha);
+    console.log('All changed files:', data.files?.map(f => f.filename));
+    console.log('Filtered MD files:', data.files?.filter(file => file.filename.endsWith('.md') && file.status !== 'removed'));
     return data.files
         ?.filter(file => file.filename.endsWith('.md') && file.status !== 'removed')
         .map(file => file.filename) ?? [];
@@ -157,6 +160,10 @@ function chunkBlocks(blocks, size = 100) {
 }
 async function pushMdFilesToNotion(notionToken) {
     const markdownFiles = await getChangedMarkdownFiles();
+    if (markdownFiles.length === 0) {
+        core.info("No markdown files changed — skipping Notion sync.");
+        return;
+    }
     core.debug(markdownFiles.join('\n'));
     // loop over all the markdown files and push the corresponding ones to notion
     for (let f of markdownFiles) {

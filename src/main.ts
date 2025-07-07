@@ -43,6 +43,10 @@ async function getChangedMarkdownFiles(): Promise<string[]> {
     ref: sha
   });
 
+  console.log('SHA:', sha);
+  console.log('All changed files:', data.files?.map(f => f.filename));
+  console.log('Filtered MD files:', data.files?.filter(file => file.filename.endsWith('.md') && file.status !== 'removed'));  
+
   return data.files
     ?.filter(file => file.filename.endsWith('.md') && file.status !== 'removed')
     .map(file => file.filename) ?? [];
