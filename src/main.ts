@@ -97,6 +97,14 @@ async function updateNotionPageTitle(
   core.info(`✅ Updated title to "${newTitle}" for page ${pageId}`);
 }
 
+function chunkBlocks<T>(blocks: T[], size = 100): T[][] {
+  const chunks = [];
+  for (let i = 0; i < blocks.length; i += size) {
+    chunks.push(blocks.slice(i, i + size));
+  }
+  return chunks;
+}
+
 async function pushMdFilesToNotion(notionToken : string) {
   const markdownFiles = await getChangedMarkdownFiles();
   core.debug(markdownFiles.join('\n'))
@@ -139,13 +147,17 @@ async function pushMdFilesToNotion(notionToken : string) {
         //convert the markdown to content to notion blocks
         const blocks = markdownToBlocks(parsed_content.content)
 
+        const blockChunks = chunkBlocks(blocks, 100);
+
         //append these new blocks to the empty page
         core.info("Uploading blocks to notion page")
-        await httpClient.patch(`/blocks/${parentBlockId}/children`, {
-          children: blocks
-        }, {
-          headers: getHeaders(notionToken),
-        });
+        for (const chunk of blockChunks) {
+          await httpClient.patch(`/blocks/${parentBlockId}/children`, {
+            children: chunk
+          }, {
+            headers: getHeaders(notionToken),
+          });
+        }
         core.info(`✅ Pushed file ${f} to notion`);
       }
     }

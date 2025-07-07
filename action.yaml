@@ -1,4 +1,4 @@
-name: push-md-to-notion
+name: Sync Markdown files to Notion
 description: GIthub action for pushing markdown changes to Notion
 author: step-security
 inputs:
