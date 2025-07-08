@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Push changed markdown to Notion
-        uses: step-security/push-md-to-notion@v0
+        uses: step-security/push-md-to-notion@v1
         with:
           notion-token: ${{ secrets.NOTION_TOKEN }}
 ```
