@@ -1,0 +1,35 @@
+{
+  "name": "push-md-to-notion",
+  "version": "1.0.0",
+  "description": "A github action for pushing markdown files to notion.",
+  "main": "./lib/main.js",
+  "scripts": {
+    "compile": "tsc",
+    "build": "npm run compile && ncc build build/main.js -o dist",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "notion",
+    "github",
+    "action",
+    "markdown",
+    "step-security",
+    "maintained-actions"
+  ],
+  "author": "step-security",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "@vercel/ncc": "^0.38.3",
+    "prettier": "^3.6.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@tryfabric/martian": "^1.2.0",
+    "axios": "^1.10.0",
+    "axios-retry": "^4.5.0",
+    "gray-matter": "^4.0.3"
+  }
+}
