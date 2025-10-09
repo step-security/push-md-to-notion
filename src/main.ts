@@ -107,13 +107,64 @@ function chunkBlocks<T>(blocks: T[], size = 100): T[][] {
   return chunks;
 }
 
-async function pushMdFilesToNotion(notionToken: string) {
+function createWarningBlock(fileName: string): any {
+  const repo = process.env.GITHUB_REPOSITORY || '';
+  const sha = process.env.GITHUB_SHA || '';
+  const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+
+  const fileUrl = `${serverUrl}/${repo}/blob/${sha}/${fileName}`;
+
+  return {
+    type: 'callout',
+    callout: {
+      rich_text: [
+        {
+          type: 'text',
+          text: {
+            content:
+              'This file is linked to Github. Changes must be made in the ',
+          },
+        },
+        {
+          type: 'text',
+          text: {
+            content: 'markdown file',
+            link: {
+              url: fileUrl,
+            },
+          },
+          annotations: {
+            code: false,
+          },
+        },
+        {
+          type: 'text',
+          text: {
+            content: ' to be permanent.',
+          },
+        },
+      ],
+      icon: {
+        emoji: '⚠️',
+      },
+      color: 'yellow_background',
+    },
+  };
+}
+
+async function pushMdFilesToNotion(notionToken: string, dryRun: boolean) {
   const markdownFiles = await getEditedMarkdownFiles();
   if (markdownFiles.length === 0) {
     core.info('No markdown files with changes detected for current commit');
     return;
   }
   core.debug(markdownFiles.join('\n'));
+
+  if (dryRun) {
+    core.info('🔍 DRY RUN MODE - No changes will be made to Notion');
+    core.info('');
+  }
+
   // loop over all the markdown files and push the corresponding ones to notion
   for (let f of markdownFiles) {
     const content = fs.readFileSync(f, 'utf8');
@@ -130,47 +181,84 @@ async function pushMdFilesToNotion(notionToken: string) {
           `Could not extract block ID from ${parsed_content.data.notion_page}. Skipping this file: ${f}`
         );
       } else {
-        //update the title of the page if present
-        if (parsed_content.data.title) {
-          core.info('Updating page title');
-          await updateNotionPageTitle(
+        if (dryRun) {
+          // In dry-run mode, validate connection and show what would be changed
+          core.info(`📄 File: ${f}`);
+          core.info(`   Page ID: ${parentBlockId}`);
+          if (parsed_content.data.title) {
+            core.info(
+              `   Would update title to: "${parsed_content.data.title}"`
+            );
+          }
+
+          // Test Notion connection by fetching the page
+          try {
+            await httpClient.get(`/blocks/${parentBlockId}`, {
+              headers: getHeaders(notionToken),
+            });
+            core.info(
+              `   ✅ Connection validated - page exists and is accessible`
+            );
+          } catch (error) {
+            if (isAxiosError(error)) {
+              core.error(
+                `   ❌ Connection failed: ${error.response?.status} - ${error.response?.data?.message || error.message}`
+              );
+            } else {
+              core.error(`   ❌ Connection failed: ${String(error)}`);
+            }
+          }
+
+          const blocks = markdownToBlocks(parsed_content.content);
+          core.info(`   Would sync ${blocks.length} blocks`);
+          core.info('');
+        } else {
+          //update the title of the page if present
+          if (parsed_content.data.title) {
+            core.info('Updating page title');
+            await updateNotionPageTitle(
+              parentBlockId,
+              parsed_content.data.title,
+              notionToken
+            );
+          }
+
+          // Get all children blocks for current page and delete them
+          core.info('Fetching current page from notion as blocks');
+          const childrenBlockIds = await getAllChildrenBlocks(
             parentBlockId,
-            parsed_content.data.title,
             notionToken
           );
-        }
-
-        // Get all children blocks for current page and delete them
-        core.info('Fetching current page from notion as blocks');
-        const childrenBlockIds = await getAllChildrenBlocks(
-          parentBlockId,
-          notionToken
-        );
-        for (let blockId of childrenBlockIds) {
-          await httpClient.delete(`/blocks/${blockId}`, {
-            headers: getHeaders(notionToken),
-          });
-        }
-
-        //convert the markdown to content to notion blocks
-        const blocks = markdownToBlocks(parsed_content.content);
-
-        //append these new blocks to the empty page
-        core.info('Uploading blocks to notion page');
-        //seperate blocks into chunks of 100 to not cross API limits.
-        const blockChunks = chunkBlocks(blocks, 100);
-        for (const chunk of blockChunks) {
-          await httpClient.patch(
-            `/blocks/${parentBlockId}/children`,
-            {
-              children: chunk,
-            },
-            {
+          for (let blockId of childrenBlockIds) {
+            await httpClient.delete(`/blocks/${blockId}`, {
               headers: getHeaders(notionToken),
-            }
-          );
+            });
+          }
+
+          //convert the markdown to content to notion blocks
+          const blocks = markdownToBlocks(parsed_content.content);
+
+          // Add warning block at the beginning
+          const warningBlock = createWarningBlock(f);
+          const allBlocks = [warningBlock, ...blocks];
+
+          //append these new blocks to the empty page
+          core.info('Uploading blocks to notion page');
+          //seperate blocks into chunks of 100 to not cross API limits.
+          const blockChunks = chunkBlocks(allBlocks, 100);
+          for (const chunk of blockChunks) {
+            await httpClient.patch(
+              `/blocks/${parentBlockId}/children`,
+              {
+                children: chunk,
+              },
+              {
+                headers: getHeaders(notionToken),
+              }
+            );
+          }
+          core.info(`✅ Pushed file ${f} to notion`);
         }
-        core.info(`✅ Pushed file ${f} to notion`);
       }
     } else {
       core.info(`no notion frontmatter found for ${f}`);
@@ -182,8 +270,15 @@ async function run() {
   try {
     await validateSubscription();
     const notionToken = core.getInput('notion-token', { required: true });
-    await pushMdFilesToNotion(notionToken);
-    core.info(`✅ Pushed all markdown files to notion`);
+    const dryRun = core.getInput('dry-run') === 'true';
+    await pushMdFilesToNotion(notionToken, dryRun);
+    if (dryRun) {
+      core.info(
+        `✅ Dry run completed - validated connection and listed changes`
+      );
+    } else {
+      core.info(`✅ Pushed all markdown files to notion`);
+    }
   } catch (e) {
     if (isAxiosError(e)) {
       const status = e.response?.status || 'unknown';

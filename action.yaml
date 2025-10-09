@@ -5,9 +5,13 @@ inputs:
   notion-token:
     description: 'Notion integration token for authorization'
     required: true
+  dry-run:
+    description: 'Run in dry-run mode - validates connection and lists changes without updating Notion'
+    required: false
+    default: 'false'
 branding:
   color: yellow
-  icon: pencil
+  icon: package
 runs:
   using: 'node20'
   main: 'dist/index.js'
