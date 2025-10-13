@@ -1,6 +1,6 @@
 {
   "name": "push-md-to-notion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A github action for pushing markdown files to notion.",
   "main": "./lib/main.js",
   "scripts": {
