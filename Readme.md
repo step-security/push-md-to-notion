@@ -1,3 +1,5 @@
+[![StepSecurity Maintained Action](https://raw.githubusercontent.com/step-security/maintained-actions-assets/main/assets/maintained-action-banner.png)](https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions)
+
 # 📘 Push Markdown to Notion GitHub Action
 
 This GitHub Action automatically detects changed Markdown (`.md`) files in the **most recent commit**, parses them for Notion frontmatter, and updates the corresponding Notion pages with their contents.
