@@ -15,7 +15,7 @@ async function validateSubscription(): Promise<void> {
     repoPrivate = eventData?.repository?.private;
   }
 
-  const upstream = 'step-security/push-md-to-notion';
+  const upstream = 'JoshStern/push-md-to-notion';
   const action = process.env.GITHUB_ACTION_REPOSITORY;
   const docsUrl =
     'https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions';
