@@ -3,7 +3,7 @@ import fs from 'fs';
 import matter from 'gray-matter';
 import httpClient from './http';
 import { markdownToBlocks } from '@tryfabric/martian';
-import axios, { AxiosResponse, isAxiosError } from 'axios';
+import axios, { isAxiosError } from 'axios';
 import * as cp from 'child_process';
 
 async function validateSubscription(): Promise<void> {
@@ -56,7 +56,7 @@ async function validateSubscription(): Promise<void> {
 function getHeaders(notionToken: string) {
   return {
     Authorization: `Bearer ${notionToken}`,
-    'Notion-Version': '2022-06-28',
+    'Notion-Version': '2025-09-03',
   };
 }
 
@@ -73,31 +73,15 @@ function getEditedMarkdownFiles(): string[] {
   return changedMarkdownFiles;
 }
 
-async function getAllChildrenBlocks(
-  blockId: string,
-  token: string
-): Promise<any[]> {
-  let allBlocks: any[] = [];
-  let hasMore = true;
-  let startCursor: string | undefined = undefined;
-
-  while (hasMore) {
-    const response: AxiosResponse = await httpClient.get(
-      '/blocks/' + blockId + '/children',
-      {
-        headers: getHeaders(token),
-        params: startCursor ? { start_cursor: startCursor } : {},
-      }
-    );
-
-    const data = response.data;
-    allBlocks.push(...data.results.map((block: any) => block.id));
-
-    hasMore = data.has_more;
-    startCursor = data.next_cursor;
-  }
-
-  return allBlocks;
+async function clearNotionPage(
+  pageId: string,
+  notionToken: string
+): Promise<void> {
+  await httpClient.patch(
+    `/pages/${pageId}`,
+    { erase_content: true },
+    { headers: getHeaders(notionToken) }
+  );
 }
 
 async function updateNotionPageTitle(
@@ -243,6 +227,10 @@ async function pushMdFilesToNotion(notionToken: string, dryRun: boolean) {
           core.info(`   Would sync ${blocks.length} blocks`);
           core.info('');
         } else {
+          // Clear the page content in a single API call before writing
+          core.info('Clearing page content');
+          await clearNotionPage(parentBlockId, notionToken);
+
           //update the title of the page if present
           if (parsed_content.data.title) {
             core.info('Updating page title');
@@ -251,18 +239,6 @@ async function pushMdFilesToNotion(notionToken: string, dryRun: boolean) {
               parsed_content.data.title,
               notionToken
             );
-          }
-
-          // Get all children blocks for current page and delete them
-          core.info('Fetching current page from notion as blocks');
-          const childrenBlockIds = await getAllChildrenBlocks(
-            parentBlockId,
-            notionToken
-          );
-          for (let blockId of childrenBlockIds) {
-            await httpClient.delete(`/blocks/${blockId}`, {
-              headers: getHeaders(notionToken),
-            });
           }
 
           //convert the markdown to content to notion blocks

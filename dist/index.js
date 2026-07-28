@@ -116,7 +116,7 @@ async function validateSubscription() {
 function getHeaders(notionToken) {
     return {
         Authorization: `Bearer ${notionToken}`,
-        'Notion-Version': '2022-06-28',
+        'Notion-Version': '2025-09-03',
     };
 }
 function getEditedMarkdownFiles() {
@@ -129,21 +129,8 @@ function getEditedMarkdownFiles() {
         .filter((fn) => fn.endsWith('.md'));
     return changedMarkdownFiles;
 }
-async function getAllChildrenBlocks(blockId, token) {
-    let allBlocks = [];
-    let hasMore = true;
-    let startCursor = undefined;
-    while (hasMore) {
-        const response = await http_1.default.get('/blocks/' + blockId + '/children', {
-            headers: getHeaders(token),
-            params: startCursor ? { start_cursor: startCursor } : {},
-        });
-        const data = response.data;
-        allBlocks.push(...data.results.map((block) => block.id));
-        hasMore = data.has_more;
-        startCursor = data.next_cursor;
-    }
-    return allBlocks;
+async function clearNotionPage(pageId, notionToken) {
+    await http_1.default.patch(`/pages/${pageId}`, { erase_content: true }, { headers: getHeaders(notionToken) });
 }
 async function updateNotionPageTitle(pageId, newTitle, notionToken) {
     await http_1.default.patch(`/pages/${pageId}`, {
@@ -263,18 +250,13 @@ async function pushMdFilesToNotion(notionToken, dryRun) {
                     core.info('');
                 }
                 else {
+                    // Clear the page content in a single API call before writing
+                    core.info('Clearing page content');
+                    await clearNotionPage(parentBlockId, notionToken);
                     //update the title of the page if present
                     if (parsed_content.data.title) {
                         core.info('Updating page title');
                         await updateNotionPageTitle(parentBlockId, parsed_content.data.title, notionToken);
-                    }
-                    // Get all children blocks for current page and delete them
-                    core.info('Fetching current page from notion as blocks');
-                    const childrenBlockIds = await getAllChildrenBlocks(parentBlockId, notionToken);
-                    for (let blockId of childrenBlockIds) {
-                        await http_1.default.delete(`/blocks/${blockId}`, {
-                            headers: getHeaders(notionToken),
-                        });
                     }
                     //convert the markdown to content to notion blocks
                     const blocks = (0, martian_1.markdownToBlocks)(parsed_content.content);
@@ -3804,26 +3786,15 @@ const unified_1 = __importDefault(__nccwpck_require__(4042));
 const remark_parse_1 = __importDefault(__nccwpck_require__(4982));
 const internal_1 = __nccwpck_require__(2328);
 const remark_gfm_1 = __importDefault(__nccwpck_require__(2493));
+const remark_math_1 = __importDefault(__nccwpck_require__(1425));
 /**
  * Parses Markdown content into Notion Blocks.
- * - Supports all heading types (heading depths 4, 5, 6 are treated as 3 for Notion)
- * - Supports numbered lists, bulleted lists, to-do lists
- * - Supports italics, bold, strikethrough, inline code, hyperlinks
- *
- * Per Notion limitations, these markdown attributes are not supported:
- * - Tables (removed)
- * - HTML tags (removed)
- * - Thematic breaks (removed)
- * - Code blocks (treated as paragraph)
- * - Block quotes (treated as paragraph)
- *
- * Supports GitHub-flavoured Markdown.
  *
  * @param body Any Markdown or GFM content
  * @param options Any additional option
  */
 function markdownToBlocks(body, options) {
-    const root = (0, unified_1.default)().use(remark_parse_1.default).use(remark_gfm_1.default).parse(body);
+    const root = (0, unified_1.default)().use(remark_parse_1.default).use(remark_gfm_1.default).use(remark_math_1.default).parse(body);
     return (0, internal_1.parseBlocks)(root, options);
 }
 exports.markdownToBlocks = markdownToBlocks;
@@ -3844,12 +3815,13 @@ exports.markdownToRichText = markdownToRichText;
 /***/ }),
 
 /***/ 4461:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.tableRow = exports.table = exports.toDo = exports.numberedListItem = exports.bulletedListItem = exports.headingThree = exports.headingTwo = exports.headingOne = exports.table_of_contents = exports.image = exports.blockquote = exports.code = exports.paragraph = void 0;
+exports.equation = exports.tableRow = exports.table = exports.toDo = exports.numberedListItem = exports.bulletedListItem = exports.headingThree = exports.headingTwo = exports.headingOne = exports.table_of_contents = exports.image = exports.blockquote = exports.code = exports.paragraph = void 0;
+const common_1 = __nccwpck_require__(654);
 function paragraph(text) {
     return {
         object: 'block',
@@ -3871,12 +3843,15 @@ function code(text, lang = 'plain text') {
     };
 }
 exports.code = code;
-function blockquote(text) {
+function blockquote(text = [], children = []) {
     return {
         object: 'block',
         type: 'quote',
         quote: {
-            rich_text: text,
+            // By setting an empty rich text we prevent the "Empty quote" line from showing up at all
+            rich_text: text.length ? text : [(0, common_1.richText)('')],
+            // @ts-expect-error Typings are not perfect
+            children,
         },
     };
 }
@@ -3972,7 +3947,7 @@ function table(children, tableWidth) {
         type: 'table',
         table: {
             table_width: tableWidth,
-            has_row_header: true,
+            has_column_header: true,
             children: (children === null || children === void 0 ? void 0 : children.length) ? children : [],
         },
     };
@@ -3988,6 +3963,15 @@ function tableRow(cells = []) {
     };
 }
 exports.tableRow = tableRow;
+function equation(value) {
+    return {
+        type: 'equation',
+        equation: {
+            expression: value,
+        },
+    };
+}
+exports.equation = equation;
 //# sourceMappingURL=blocks.js.map
 
 /***/ }),
@@ -4013,29 +3997,37 @@ exports.LIMITS = {
     },
 };
 function richText(content, options = {}) {
-    var _a;
-    const annotations = (_a = options.annotations) !== null && _a !== void 0 ? _a : {};
-    return {
-        type: 'text',
-        annotations: {
-            bold: false,
-            strikethrough: false,
-            underline: false,
-            italic: false,
-            code: false,
-            color: 'default',
-            ...annotations,
-        },
-        text: {
-            content: content,
-            link: options.url
-                ? {
-                    type: 'url',
-                    url: options.url,
-                }
-                : undefined,
-        },
+    const annotations = {
+        bold: false,
+        strikethrough: false,
+        underline: false,
+        italic: false,
+        code: false,
+        color: 'default',
+        ...(options.annotations || {}),
     };
+    if (options.type === 'equation')
+        return {
+            type: 'equation',
+            annotations,
+            equation: {
+                expression: content,
+            },
+        };
+    else
+        return {
+            type: 'text',
+            annotations,
+            text: {
+                content: content,
+                link: options.url
+                    ? {
+                        type: 'url',
+                        url: options.url,
+                    }
+                    : undefined,
+            },
+        };
 }
 exports.richText = richText;
 exports.SUPPORTED_CODE_BLOCK_LANGUAGES = [
@@ -4223,6 +4215,8 @@ function parseInline(element, options) {
         case 'inlineCode':
             copy.annotations.code = true;
             return [notion.richText(element.value, copy)];
+        case 'inlineMath':
+            return [notion.richText(element.value, { ...copy, type: 'equation' })];
         default:
             return [];
     }
@@ -4299,26 +4293,8 @@ function parseParagraph(element, options) {
     }
 }
 function parseBlockquote(element, options) {
-    // Quotes can only contain RichText[], but come through as Block[]
-    // This code collects and flattens the common ones
-    const blocks = element.children.flatMap(child => parseNode(child, options));
-    const paragraphs = blocks.flatMap(child => child);
-    const richtext = paragraphs.flatMap(child => {
-        if (child.type === 'paragraph') {
-            return child.paragraph.rich_text;
-        }
-        if (child.type === 'heading_1') {
-            return child.heading_1.rich_text;
-        }
-        if (child.type === 'heading_2') {
-            return child.heading_2.rich_text;
-        }
-        if (child.type === 'heading_3') {
-            return child.heading_3.rich_text;
-        }
-        return [];
-    });
-    return notion.blockquote(richtext);
+    const children = element.children.flatMap(child => parseNode(child, options));
+    return notion.blockquote([], children);
 }
 function parseHeading(element) {
     const text = element.children.flatMap(child => parseInline(child));
@@ -4372,6 +4348,10 @@ function parseTable(node) {
     const tableRows = node.children.flatMap(child => parseTableRow(child));
     return [notion.table(tableRows, tableWidth)];
 }
+function parseMath(node) {
+    const textWithKatexNewlines = node.value.split('\n').join('\\\\\n');
+    return notion.equation(textWithKatexNewlines);
+}
 function parseNode(node, options) {
     switch (node.type) {
         case 'heading':
@@ -4385,12 +4365,9 @@ function parseNode(node, options) {
         case 'list':
             return parseList(node, options);
         case 'table':
-            if (options.allowUnsupported) {
-                return parseTable(node);
-            }
-            else {
-                return [];
-            }
+            return parseTable(node);
+        case 'math':
+            return [parseMath(node)];
         default:
             return [];
     }
@@ -4406,14 +4383,12 @@ function parseBlocks(root, options) {
 exports.parseBlocks = parseBlocks;
 function parseRichText(root, options) {
     var _a, _b, _c, _d;
-    if (root.children[0].type !== 'paragraph') {
-        throw new Error(`Unsupported markdown element: ${JSON.stringify(root)}`);
-    }
     const richTexts = [];
-    root.children.forEach(paragraph => {
-        if (paragraph.type === 'paragraph') {
-            paragraph.children.forEach(child => richTexts.push(...parseInline(child)));
-        }
+    root.children.forEach(child => {
+        if (child.type === 'paragraph')
+            child.children.forEach(child => richTexts.push(...parseInline(child)));
+        else if ((options === null || options === void 0 ? void 0 : options.nonInline) === 'throw')
+            throw new Error(`Unsupported markdown element: ${JSON.stringify(child)}`);
     });
     const truncate = !!((_b = (_a = options === null || options === void 0 ? void 0 : options.notionLimits) === null || _a === void 0 ? void 0 : _a.truncate) !== null && _b !== void 0 ? _b : true), limitCallback = (_d = (_c = options === null || options === void 0 ? void 0 : options.notionLimits) === null || _c === void 0 ? void 0 : _c.onError) !== null && _d !== void 0 ? _d : (() => { });
     if (richTexts.length > notion_1.LIMITS.RICH_TEXT_ARRAYS)
@@ -14104,6 +14079,50 @@ function isBuffer(val) {
 
 /***/ }),
 
+/***/ 6863:
+/***/ ((module) => {
+
+"use strict";
+
+
+module.exports = longestStreak
+
+// Get the count of the longest repeating streak of `character` in `value`.
+function longestStreak(value, character) {
+  var count = 0
+  var maximum = 0
+  var expected
+  var index
+
+  if (typeof character !== 'string' || character.length !== 1) {
+    throw new Error('Expected character')
+  }
+
+  value = String(value)
+  index = value.indexOf(character)
+  expected = index
+
+  while (index !== -1) {
+    count++
+
+    if (index === expected) {
+      if (count > maximum) {
+        maximum = count
+      }
+    } else {
+      count = 1
+    }
+
+    expected = index + 1
+    index = value.indexOf(character, expected)
+  }
+
+  return maximum
+}
+
+
+/***/ }),
+
 /***/ 7740:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -16078,6 +16097,178 @@ function toMarkdown(options) {
 
 /***/ }),
 
+/***/ 1713:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+
+exports.enter = {
+  mathFlow: enterMathFlow,
+  mathFlowFenceMeta: enterMathFlowMeta,
+  mathText: enterMathText
+}
+exports.exit = {
+  mathFlow: exitMathFlow,
+  mathFlowFence: exitMathFlowFence,
+  mathFlowFenceMeta: exitMathFlowMeta,
+  mathFlowValue: exitMathData,
+  mathText: exitMathText,
+  mathTextData: exitMathData
+}
+
+function enterMathFlow(token) {
+  this.enter(
+    {
+      type: 'math',
+      meta: null,
+      value: '',
+      data: {
+        hName: 'div',
+        hProperties: {className: ['math', 'math-display']},
+        hChildren: [{type: 'text', value: ''}]
+      }
+    },
+    token
+  )
+}
+
+function enterMathFlowMeta() {
+  this.buffer()
+}
+
+function exitMathFlowMeta() {
+  var data = this.resume()
+  this.stack[this.stack.length - 1].meta = data
+}
+
+function exitMathFlowFence() {
+  // Exit if this is the closing fence.
+  if (this.getData('mathFlowInside')) return
+  this.buffer()
+  this.setData('mathFlowInside', true)
+}
+
+function exitMathFlow(token) {
+  var data = this.resume().replace(/^(\r?\n|\r)|(\r?\n|\r)$/g, '')
+  var node = this.exit(token)
+  node.value = data
+  node.data.hChildren[0].value = data
+  this.setData('mathFlowInside')
+}
+
+function enterMathText(token) {
+  this.enter(
+    {
+      type: 'inlineMath',
+      value: '',
+      data: {
+        hName: 'span',
+        hProperties: {className: ['math', 'math-inline']},
+        hChildren: [{type: 'text', value: ''}]
+      }
+    },
+    token
+  )
+  this.buffer()
+}
+
+function exitMathText(token) {
+  var data = this.resume()
+  var node = this.exit(token)
+  node.value = data
+  node.data.hChildren[0].value = data
+}
+
+function exitMathData(token) {
+  this.config.enter.data.call(this, token)
+  this.config.exit.data.call(this, token)
+}
+
+
+/***/ }),
+
+/***/ 8682:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+exports.unsafe = [
+  {character: '\r', inConstruct: ['mathFlowMeta']},
+  {character: '\r', inConstruct: ['mathFlowMeta']},
+  {character: '$', inConstruct: ['mathFlowMeta', 'phrasing']},
+  {atBreak: true, character: '$', after: '\\$'}
+]
+
+exports.handlers = {math: math, inlineMath: inlineMath}
+
+inlineMath.peek = inlineMathPeek
+
+var repeat = __nccwpck_require__(471)
+var streak = __nccwpck_require__(6863)
+var safe = __nccwpck_require__(1345)
+
+function math(node, _, context) {
+  var raw = node.value || ''
+  var fence = repeat('$', Math.max(streak(raw, '$') + 1, 2))
+  var exit = context.enter('mathFlow')
+  var value = fence
+  var subexit
+
+  if (node.meta) {
+    subexit = context.enter('mathFlowMeta')
+    value += safe(context, node.meta, {before: '$', after: ' ', encode: ['$']})
+    subexit()
+  }
+
+  value += '\n'
+
+  if (raw) {
+    value += raw + '\n'
+  }
+
+  value += fence
+  exit()
+  return value
+}
+
+function inlineMath(node) {
+  var value = node.value || ''
+  var size = 1
+  var pad = ''
+  var sequence
+
+  // If there is a single dollar sign on its own in the math, use a fence of
+  // two.
+  // If there are two in a row, use one.
+  while (
+    new RegExp('(^|[^$])' + repeat('\\$', size) + '([^$]|$)').test(value)
+  ) {
+    size++
+  }
+
+  // If this is not just spaces or eols (tabs don’t count), and either the first
+  // or last character are a space, eol, or dollar sign, then pad with spaces.
+  if (
+    /[^ \r\n]/.test(value) &&
+    (/[ \r\n$]/.test(value.charAt(0)) ||
+      /[ \r\n$]/.test(value.charAt(value.length - 1)))
+  ) {
+    pad = ' '
+  }
+
+  sequence = repeat('$', size)
+  return sequence + pad + value + pad + sequence
+}
+
+function inlineMathPeek() {
+  return '$'
+}
+
+
+/***/ }),
+
 /***/ 3430:
 /***/ ((module) => {
 
@@ -16467,6 +16658,189 @@ function patternCompile(pattern) {
   }
 
   return pattern._compiled
+}
+
+
+/***/ }),
+
+/***/ 4764:
+/***/ ((module) => {
+
+module.exports = patternInScope
+
+function patternInScope(stack, pattern) {
+  return (
+    listInScope(stack, pattern.inConstruct, true) &&
+    !listInScope(stack, pattern.notInConstruct)
+  )
+}
+
+function listInScope(stack, list, none) {
+  var index
+
+  if (!list) {
+    return none
+  }
+
+  if (typeof list === 'string') {
+    list = [list]
+  }
+
+  index = -1
+
+  while (++index < list.length) {
+    if (stack.indexOf(list[index]) !== -1) {
+      return true
+    }
+  }
+
+  return false
+}
+
+
+/***/ }),
+
+/***/ 1345:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+module.exports = safe
+
+var patternCompile = __nccwpck_require__(9321)
+var patternInScope = __nccwpck_require__(4764)
+
+function safe(context, input, config) {
+  var value = (config.before || '') + (input || '') + (config.after || '')
+  var positions = []
+  var result = []
+  var infos = {}
+  var index = -1
+  var before
+  var after
+  var position
+  var pattern
+  var expression
+  var match
+  var start
+  var end
+
+  while (++index < context.unsafe.length) {
+    pattern = context.unsafe[index]
+
+    if (!patternInScope(context.stack, pattern)) {
+      continue
+    }
+
+    expression = patternCompile(pattern)
+
+    while ((match = expression.exec(value))) {
+      before = 'before' in pattern || pattern.atBreak
+      after = 'after' in pattern
+
+      position = match.index + (before ? match[1].length : 0)
+
+      if (positions.indexOf(position) === -1) {
+        positions.push(position)
+        infos[position] = {before: before, after: after}
+      } else {
+        if (infos[position].before && !before) {
+          infos[position].before = false
+        }
+
+        if (infos[position].after && !after) {
+          infos[position].after = false
+        }
+      }
+    }
+  }
+
+  positions.sort(numerical)
+
+  start = config.before ? config.before.length : 0
+  end = value.length - (config.after ? config.after.length : 0)
+  index = -1
+
+  while (++index < positions.length) {
+    position = positions[index]
+
+    if (
+      // Character before or after matched:
+      position < start ||
+      position >= end
+    ) {
+      continue
+    }
+
+    // If this character is supposed to be escaped because it has a condition on
+    // the next character, and the next character is definitly being escaped,
+    // then skip this escape.
+    if (
+      position + 1 < end &&
+      positions[index + 1] === position + 1 &&
+      infos[position].after &&
+      !infos[position + 1].before &&
+      !infos[position + 1].after
+    ) {
+      continue
+    }
+
+    if (start !== position) {
+      // If we have to use a character reference, an ampersand would be more
+      // correct, but as backslashes only care about punctuation, either will
+      // do the trick
+      result.push(escapeBackslashes(value.slice(start, position), '\\'))
+    }
+
+    start = position
+
+    if (
+      /[!-/:-@[-`{-~]/.test(value.charAt(position)) &&
+      (!config.encode || config.encode.indexOf(value.charAt(position)) === -1)
+    ) {
+      // Character escape.
+      result.push('\\')
+    } else {
+      // Character reference.
+      result.push(
+        '&#x' + value.charCodeAt(position).toString(16).toUpperCase() + ';'
+      )
+      start++
+    }
+  }
+
+  result.push(escapeBackslashes(value.slice(start, end), config.after))
+
+  return result.join('')
+}
+
+function numerical(a, b) {
+  return a - b
+}
+
+function escapeBackslashes(value, after) {
+  var expression = /\\(?=[!-/:-@[-`{-~])/g
+  var positions = []
+  var results = []
+  var index = -1
+  var start = 0
+  var whole = value + after
+  var match
+
+  while ((match = expression.exec(whole))) {
+    positions.push(match.index)
+  }
+
+  while (++index < positions.length) {
+    if (start !== positions[index]) {
+      results.push(value.slice(start, positions[index]))
+    }
+
+    results.push('\\')
+    start = positions[index]
+  }
+
+  results.push(value.slice(start))
+
+  return results.join('')
 }
 
 
@@ -17979,6 +18353,354 @@ module.exports = create
 
 function create(options) {
   return combine([autolink, strikethrough(options), table, tasklist])
+}
+
+
+/***/ }),
+
+/***/ 9254:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+module.exports = __nccwpck_require__(9327)
+
+
+/***/ }),
+
+/***/ 9327:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+exports.flow = {36: __nccwpck_require__(3997)}
+exports.text = {36: __nccwpck_require__(3590)}
+
+
+/***/ }),
+
+/***/ 3997:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+exports.tokenize = tokenizeMathFenced
+exports.concrete = true
+
+var prefixSize = __nccwpck_require__(4245)
+var createSpace = __nccwpck_require__(907)
+
+function tokenizeMathFenced(effects, ok, nok) {
+  var self = this
+  var initialPrefix = prefixSize(this.events, 'linePrefix')
+  var sizeOpen = 0
+
+  return start
+
+  function start(code) {
+    /* istanbul ignore if - handled by mm */
+    if (code !== 36) throw new Error('expected `$`')
+
+    effects.enter('mathFlow')
+    effects.enter('mathFlowFence')
+    effects.enter('mathFlowFenceSequence')
+    return sequenceOpen(code)
+  }
+
+  function sequenceOpen(code) {
+    if (code === 36) {
+      effects.consume(code)
+      sizeOpen++
+      return sequenceOpen
+    }
+
+    effects.exit('mathFlowFenceSequence')
+    return sizeOpen < 2
+      ? nok(code)
+      : createSpace(effects, metaOpen, 'whitespace')(code)
+  }
+
+  function metaOpen(code) {
+    if (code === null || code === -5 || code === -4 || code === -3) {
+      return openAfter(code)
+    }
+
+    effects.enter('mathFlowFenceMeta')
+    effects.enter('chunkString', {contentType: 'string'})
+    return meta(code)
+  }
+
+  function meta(code) {
+    if (code === null || code === -5 || code === -4 || code === -3) {
+      effects.exit('chunkString')
+      effects.exit('mathFlowFenceMeta')
+      return openAfter(code)
+    }
+
+    if (code === 36) return nok(code)
+    effects.consume(code)
+    return meta
+  }
+
+  function openAfter(code) {
+    effects.exit('mathFlowFence')
+    return self.interrupt ? ok(code) : content(code)
+  }
+
+  function content(code) {
+    if (code === null) {
+      return after(code)
+    }
+
+    if (code === -5 || code === -4 || code === -3) {
+      effects.enter('lineEnding')
+      effects.consume(code)
+      effects.exit('lineEnding')
+      return effects.attempt(
+        {tokenize: tokenizeClosingFence, partial: true},
+        after,
+        initialPrefix
+          ? createSpace(effects, content, 'linePrefix', initialPrefix + 1)
+          : content
+      )
+    }
+
+    effects.enter('mathFlowValue')
+    return contentContinue(code)
+  }
+
+  function contentContinue(code) {
+    if (code === null || code === -5 || code === -4 || code === -3) {
+      effects.exit('mathFlowValue')
+      return content(code)
+    }
+
+    effects.consume(code)
+    return contentContinue
+  }
+
+  function after(code) {
+    effects.exit('mathFlow')
+    return ok(code)
+  }
+
+  function tokenizeClosingFence(effects, ok, nok) {
+    var size = 0
+
+    return createSpace(effects, closingPrefixAfter, 'linePrefix', 4)
+
+    function closingPrefixAfter(code) {
+      effects.enter('mathFlowFence')
+      effects.enter('mathFlowFenceSequence')
+      return closingSequence(code)
+    }
+
+    function closingSequence(code) {
+      if (code === 36) {
+        effects.consume(code)
+        size++
+        return closingSequence
+      }
+
+      if (size < sizeOpen) return nok(code)
+      effects.exit('mathFlowFenceSequence')
+      return createSpace(effects, closingSequenceEnd, 'whitespace')(code)
+    }
+
+    function closingSequenceEnd(code) {
+      if (code === null || code === -5 || code === -4 || code === -3) {
+        effects.exit('mathFlowFence')
+        return ok(code)
+      }
+
+      return nok(code)
+    }
+  }
+}
+
+
+/***/ }),
+
+/***/ 3590:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+
+exports.tokenize = tokenizeMathText
+exports.resolve = resolveMathText
+exports.previous = previous
+
+function resolveMathText(events) {
+  var tailExitIndex = events.length - 4
+  var headEnterIndex = 3
+  var index
+  var enter
+
+  // If we start and end with an EOL or a space.
+  if (
+    (events[headEnterIndex][1].type === 'lineEnding' ||
+      events[headEnterIndex][1].type === 'space') &&
+    (events[tailExitIndex][1].type === 'lineEnding' ||
+      events[tailExitIndex][1].type === 'space')
+  ) {
+    index = headEnterIndex
+
+    // And we have data.
+    while (++index < tailExitIndex) {
+      if (events[index][1].type === 'mathTextData') {
+        // Then we have padding.
+        events[tailExitIndex][1].type = 'mathTextPadding'
+        events[headEnterIndex][1].type = 'mathTextPadding'
+        headEnterIndex += 2
+        tailExitIndex -= 2
+        break
+      }
+    }
+  }
+
+  // Merge adjacent spaces and data.
+  index = headEnterIndex - 1
+  tailExitIndex++
+
+  while (++index <= tailExitIndex) {
+    if (enter === undefined) {
+      if (index !== tailExitIndex && events[index][1].type !== 'lineEnding') {
+        enter = index
+      }
+    } else if (
+      index === tailExitIndex ||
+      events[index][1].type === 'lineEnding'
+    ) {
+      events[enter][1].type = 'mathTextData'
+
+      if (index !== enter + 2) {
+        events[enter][1].end = events[index - 1][1].end
+        events.splice(enter + 2, index - enter - 2)
+        tailExitIndex -= index - enter - 2
+        index = enter + 2
+      }
+
+      enter = undefined
+    }
+  }
+
+  return events
+}
+
+function previous(code) {
+  // If there is a previous code, there will always be a tail.
+  return (
+    code !== 36 ||
+    this.events[this.events.length - 1][1].type === 'characterEscape'
+  )
+}
+
+function tokenizeMathText(effects, ok, nok) {
+  var self = this
+  var sizeOpen = 0
+  var size
+  var token
+
+  return start
+
+  function start(code) {
+    /* istanbul ignore if - handled by mm */
+    if (code !== 36) throw new Error('expected `$`')
+
+    /* istanbul ignore if - handled by mm */
+    if (!previous.call(self, self.previous)) {
+      throw new Error('expected correct previous')
+    }
+
+    effects.enter('mathText')
+    effects.enter('mathTextSequence')
+    return openingSequence(code)
+  }
+
+  function openingSequence(code) {
+    if (code === 36) {
+      effects.consume(code)
+      sizeOpen++
+      return openingSequence
+    }
+
+    effects.exit('mathTextSequence')
+    return gap(code)
+  }
+
+  function gap(code) {
+    // EOF.
+    if (code === null) {
+      return nok(code)
+    }
+
+    // Closing fence?
+    // Could also be data.
+    if (code === 36) {
+      token = effects.enter('mathTextSequence')
+      size = 0
+      return closingSequence(code)
+    }
+
+    // Tabs don’t work, and virtual spaces don’t make sense.
+    if (code === 32) {
+      effects.enter('space')
+      effects.consume(code)
+      effects.exit('space')
+      return gap
+    }
+
+    if (code === -5 || code === -4 || code === -3) {
+      effects.enter('lineEnding')
+      effects.consume(code)
+      effects.exit('lineEnding')
+      return gap
+    }
+
+    // Data.
+    effects.enter('mathTextData')
+    return data(code)
+  }
+
+  // In code.
+  function data(code) {
+    if (
+      code === null ||
+      code === 32 ||
+      code === 36 ||
+      code === -5 ||
+      code === -4 ||
+      code === -3
+    ) {
+      effects.exit('mathTextData')
+      return gap(code)
+    }
+
+    effects.consume(code)
+    return data
+  }
+
+  // Closing fence.
+  function closingSequence(code) {
+    // More.
+    if (code === 36) {
+      effects.consume(code)
+      size++
+      return closingSequence
+    }
+
+    // Done!
+    if (size === sizeOpen) {
+      effects.exit('mathTextSequence')
+      effects.exit('mathText')
+      return ok(code)
+    }
+
+    // More or less accents: mark as data.
+    token.type = 'mathTextData'
+    return data(code)
+  }
 }
 
 
@@ -24267,6 +24989,52 @@ function gfm(options) {
   add('micromarkExtensions', syntax(options))
   add('fromMarkdownExtensions', fromMarkdown)
   add('toMarkdownExtensions', toMarkdown(options))
+
+  function add(field, value) {
+    /* istanbul ignore if - other extensions. */
+    if (data[field]) data[field].push(value)
+    else data[field] = [value]
+  }
+}
+
+
+/***/ }),
+
+/***/ 1425:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var syntax = __nccwpck_require__(9254)
+var fromMarkdown = __nccwpck_require__(1713)
+var toMarkdown = __nccwpck_require__(8682)
+var warningIssued
+
+module.exports = math
+
+function math() {
+  var data = this.data()
+
+  /* istanbul ignore next - old remark. */
+  if (
+    !warningIssued &&
+    ((this.Parser &&
+      this.Parser.prototype &&
+      this.Parser.prototype.blockTokenizers) ||
+      (this.Compiler &&
+        this.Compiler.prototype &&
+        this.Compiler.prototype.visitors))
+  ) {
+    warningIssued = true
+    console.warn(
+      '[remark-math] Warning: please upgrade to remark 13 to use this plugin'
+    )
+  }
+
+  add('micromarkExtensions', syntax)
+  add('fromMarkdownExtensions', fromMarkdown)
+  add('toMarkdownExtensions', toMarkdown)
 
   function add(field, value) {
     /* istanbul ignore if - other extensions. */
