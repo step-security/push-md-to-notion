@@ -1,0 +1,15 @@
+[[IgnoredVulns]]
+id = "GHSA-3wc5-fcw2-2329"
+reason = "katex, pulled in transitively via martian -> remark-math -> micromark-extension-math, is never used to render HTML (renderToString); martian only reads raw LaTeX text into Notion equation blocks."
+
+[[IgnoredVulns]]
+id = "GHSA-64fm-8hw2-v72w"
+reason = "Same unreachable katex renderToString path as GHSA-3wc5-fcw2-2329."
+
+[[IgnoredVulns]]
+id = "GHSA-cg87-wmx4-v546"
+reason = "Same unreachable katex renderToString path as GHSA-3wc5-fcw2-2329."
+
+[[IgnoredVulns]]
+id = "GHSA-f98w-7cxr-ff2h"
+reason = "Same unreachable katex renderToString path as GHSA-3wc5-fcw2-2329."
