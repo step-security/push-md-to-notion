@@ -25,3 +25,8 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: 'Dependency Review'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # katex is a transitive dep via martian -> remark-math -> micromark-extension-math.
+          # Its vulnerable renderToString path is never invoked; martian only reads raw LaTeX
+          # text into Notion equation blocks. See osv-scanner.toml for the same rationale.
+          allow-ghsas: GHSA-f98w-7cxr-ff2h, GHSA-3wc5-fcw2-2329, GHSA-cg87-wmx4-v546, GHSA-64fm-8hw2-v72w
