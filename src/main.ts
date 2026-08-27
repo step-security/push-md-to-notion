@@ -61,14 +61,17 @@ function getHeaders(notionToken: string) {
 }
 
 function getEditedMarkdownFiles(): string[] {
-  const allChangedFiles = cp.execSync('git show --name-only --pretty=format:', {
-    encoding: 'utf-8',
-  });
+  // --diff-filter=d excludes deleted files: they can't be read from the
+  // working tree and there is nothing to push for them.
+  const allChangedFiles = cp.execSync(
+    'git show --name-only --diff-filter=d --pretty=format:',
+    { encoding: 'utf-8' }
+  );
 
   const changedMarkdownFiles = allChangedFiles
     .trim()
     .split('\n')
-    .filter((fn) => fn.endsWith('.md'));
+    .filter((fn) => fn.endsWith('.md') && fs.existsSync(fn));
 
   return changedMarkdownFiles;
 }
