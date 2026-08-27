@@ -120,7 +120,9 @@ function getHeaders(notionToken) {
     };
 }
 function getEditedMarkdownFiles() {
-    const allChangedFiles = cp.execSync('git show --name-only --pretty=format:', {
+    // Exclude deleted paths: they are not in the working tree and have no
+    // content left to sync.
+    const allChangedFiles = cp.execSync('git show --name-only --diff-filter=d --pretty=format:', {
         encoding: 'utf-8',
     });
     const changedMarkdownFiles = allChangedFiles
@@ -225,6 +227,10 @@ async function pushMdFilesToNotion(notionToken, dryRun) {
     }
     // loop over all the markdown files and push the corresponding ones to notion
     for (let f of markdownFiles) {
+        if (!fs_1.default.existsSync(f)) {
+            core.info(`Skipping ${f}: not present in the working tree`);
+            continue;
+        }
         const content = fs_1.default.readFileSync(f, 'utf8');
         const parsed_content = (0, gray_matter_1.default)(content);
         if (typeof parsed_content.data.notion_page === 'string' &&

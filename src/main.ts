@@ -61,9 +61,14 @@ function getHeaders(notionToken: string) {
 }
 
 function getEditedMarkdownFiles(): string[] {
-  const allChangedFiles = cp.execSync('git show --name-only --pretty=format:', {
-    encoding: 'utf-8',
-  });
+  // Exclude deleted paths: they are not in the working tree and have no
+  // content left to sync.
+  const allChangedFiles = cp.execSync(
+    'git show --name-only --diff-filter=d --pretty=format:',
+    {
+      encoding: 'utf-8',
+    }
+  );
 
   const changedMarkdownFiles = allChangedFiles
     .trim()
@@ -197,6 +202,11 @@ async function pushMdFilesToNotion(notionToken: string, dryRun: boolean) {
 
   // loop over all the markdown files and push the corresponding ones to notion
   for (let f of markdownFiles) {
+    if (!fs.existsSync(f)) {
+      core.info(`Skipping ${f}: not present in the working tree`);
+      continue;
+    }
+
     const content = fs.readFileSync(f, 'utf8');
     const parsed_content = matter(content);
     if (
